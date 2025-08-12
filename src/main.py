@@ -11,10 +11,13 @@ from src.routes.conversation import conversation_bp
 from src.routes.export_simple import export_bp
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
+app.config['OPENAI_API_KEY'] = 'your-actual-api-key-here'
 
-# Enable CORS for all routes with wildcard origin
-CORS(app, origins="*", allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+# REPLACE 'your-actual-api-key-here' WITH YOUR REAL OPENAI API KEY
+app.config['OPENAI_API_KEY'] = 'your-actual-api-key-here'
+
+# Enable CORS for Netlify and all origins
+CORS(app, origins=["https://coursedesignerassistant.netlify.app", "*"], allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
 app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(conversation_bp, url_prefix='/api')
