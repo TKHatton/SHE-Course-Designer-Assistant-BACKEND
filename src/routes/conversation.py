@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from src.models.conversation import db, Conversation, Message, FrameworkConcept
+from src.utils.conversation_intelligence_simple import AdvancedConversationIntelligence
 import uuid
 import json
 from datetime import datetime, timedelta
@@ -7,38 +8,8 @@ import time
 
 conversation_bp = Blueprint('conversation', __name__)
 
-# Simple conversation intelligence class (no external dependencies)
-class AdvancedConversationIntelligence:
-    def sanitize_input(self, text):
-        return text.strip()
-    
-    def detect_safety_violations(self, text):
-        return []
-    
-    def generate_safety_response(self, violations):
-        return "I'm here to help you design educational courses using the She Is AI educational framework."
-    
-    def analyze_user_message(self, message, history):
-        return {
-            'intent': 'course_design', 
-            'confidence': 0.8, 
-            'framework_references': [],
-            'boundary_violation': False,
-            'is_vague': False,
-            'conversation_health': 'good',
-            'needs_depth': False
-        }
-    
-    def generate_intelligent_response(self, message, conversation, analysis):
-        return f"Thanks for sharing that! I'm here to help you design an amazing AI course using the She Is AI educational framework. Can you tell me more about your target audience and learning goals?"
-    
-    def _extract_course_info(self, message, conversation, analysis):
-        # Simple course info extraction
-        pass
-
-# Initialize conversation intelligence
+# Initialize enhanced conversation intelligence
 conv_intelligence = AdvancedConversationIntelligence()
-
 
 # Rate limiting storage (in production, use Redis or similar)
 rate_limit_storage = {}
@@ -100,63 +71,48 @@ Your responses help design your course and aren't stored permanently or shared. 
         'welcome_message': welcome_msg.to_dict()
     })
 
-@conversation_bp.route('/conversations/<session_id>', methods=['GET'])
-def get_conversation(session_id):
-    """Get conversation details and message history"""
-    conversation = Conversation.query.filter_by(session_id=session_id).first()
-    if not conversation:
-        return jsonify({'error': 'Conversation not found'}), 404
-    
-    messages = Message.query.filter_by(conversation_id=conversation.id).order_by(Message.timestamp).all()
-    
-    return jsonify({
-        'conversation': conversation.to_dict(),
-        'messages': [msg.to_dict() for msg in messages]
-    })
-
 @conversation_bp.route('/conversations/<session_id>/messages', methods=['POST'])
 def send_message(session_id):
-    """Send a message and get AI response with comprehensive safety measures"""
+    """Send a message in a conversation"""
     
     # Rate limiting check
     if not check_rate_limit(session_id):
         return jsonify({
-            'error': 'Rate limit exceeded. Please wait a few minutes before sending more messages.',
-            'safety_notice': 'This limit helps ensure quality conversations and system security.'
+            'error': 'Rate limit exceeded',
+            'message': 'Too many requests. Please wait a moment before sending another message.',
+            'retry_after': 60
         }), 429
     
     data = request.get_json()
-    user_message = data.get('message', '').strip()
+    if not data or 'message' not in data:
+        return jsonify({'error': 'Message content is required'}), 400
     
-    if not user_message:
-        return jsonify({'error': 'Message cannot be empty'}), 400
-    
-    # Enhanced input sanitization
+    user_message = data['message']
     original_message = user_message
+    
+    # Input sanitization
     user_message = conv_intelligence.sanitize_input(user_message)
     
-    if not user_message:
+    if not user_message or len(user_message.strip()) == 0:
         return jsonify({
             'error': 'Invalid message content',
             'safety_notice': 'Your message contained content that cannot be processed for security reasons.'
         }), 400
     
     # Check for safety violations
-    safety_violations = conv_intelligence.detect_safety_violations(original_message)
+    has_violation, safety_message = conv_intelligence.check_safety_violations(original_message)
     
     conversation = Conversation.query.filter_by(session_id=session_id).first()
     if not conversation:
         return jsonify({'error': 'Conversation not found'}), 404
     
     # If safety violations detected, respond with safety message
-    if safety_violations:
-        safety_response = conv_intelligence.generate_safety_response(safety_violations)
-        
+    if has_violation:
         # Log safety violation (in production, send to monitoring system)
         safety_msg = Message(
             conversation_id=conversation.id,
             sender='assistant',
-            content=safety_response,
+            content=safety_message,
             message_type='safety_response'
         )
         db.session.add(safety_msg)
@@ -165,7 +121,6 @@ def send_message(session_id):
         return jsonify({
             'ai_response': safety_msg.to_dict(),
             'safety_violation': True,
-            'violation_types': safety_violations,
             'privacy_notice': 'Your responses help design your course and aren\'t stored permanently or shared'
         })
     
@@ -173,22 +128,21 @@ def send_message(session_id):
     conversation_history = Message.query.filter_by(conversation_id=conversation.id).order_by(Message.timestamp).all()
     history_data = [{'sender': msg.sender, 'content': msg.content} for msg in conversation_history]
     
-    # Enhanced analysis with boundary detection
-    analysis = conv_intelligence.analyze_user_message(user_message, history_data)
+    # Generate response using available method
+    response_data = conv_intelligence.generate_response(user_message, history_data)
     
-    # Save user message with enhanced metadata
+    # Save user message
     user_msg = Message(
         conversation_id=conversation.id,
         sender='user',
         content=user_message,
-        intent=analysis['intent'],
-        confidence=analysis['confidence']
+        intent='course_design',
+        confidence=response_data.get('confidence_score', 0.8)
     )
-    user_msg.set_framework_references(analysis['framework_references'])
     db.session.add(user_msg)
     
-    # Generate intelligent AI response
-    ai_response = conv_intelligence.generate_intelligent_response(user_message, conversation, analysis)
+    # Get AI response content
+    ai_response = response_data['content']
     
     # Add privacy reminder periodically
     message_count = len(history_data)
@@ -204,20 +158,17 @@ def send_message(session_id):
     )
     db.session.add(ai_msg)
     
-    # Update conversation progress (only advance if not a boundary violation or vague response)
-    if not analysis.get('boundary_violation') and not analysis.get('is_vague'):
-        conversation.current_step = min(conversation.current_step + 1, conversation.total_steps)
-    
+    # Update conversation progress
+    conversation.current_step = min(conversation.current_step + 1, conversation.total_steps)
     conversation.completion_percentage = (conversation.current_step / conversation.total_steps) * 100
     conversation.updated_at = datetime.utcnow()
     
     # Update framework areas covered
     current_areas = conversation.get_framework_areas_covered()
-    new_areas = list(set(current_areas + analysis['framework_references']))
-    conversation.set_framework_areas_covered(new_areas)
-    
-    # Extract course information from user message if present
-    conv_intelligence._extract_course_info(user_message, conversation, analysis)
+    framework_area = response_data.get('framework_area', 'General Framework Guidance')
+    if framework_area not in current_areas:
+        new_areas = current_areas + [framework_area]
+        conversation.set_framework_areas_covered(new_areas)
     
     db.session.commit()
     
@@ -227,14 +178,14 @@ def send_message(session_id):
         'conversation_update': {
             'current_step': conversation.current_step,
             'completion_percentage': conversation.completion_percentage,
-            'framework_areas_covered': new_areas
+            'framework_areas_covered': conversation.get_framework_areas_covered()
         },
         'analysis': {
-            'intent': analysis['intent'],
-            'confidence': analysis['confidence'],
-            'boundary_violation': analysis.get('boundary_violation'),
-            'conversation_health': analysis.get('conversation_health'),
-            'needs_depth': analysis.get('needs_depth')
+            'intent': 'course_design',
+            'confidence': response_data.get('confidence_score', 0.8),
+            'boundary_violation': False,
+            'conversation_health': 'good',
+            'needs_depth': False
         },
         'privacy_notice': 'Your responses help design your course and aren\'t stored permanently or shared',
         'usage_disclaimer': 'This assistant is for educational course design only.'
@@ -249,32 +200,26 @@ def get_conversation_summary(session_id):
     
     messages = Message.query.filter_by(conversation_id=conversation.id).order_by(Message.timestamp).all()
     
-    # Generate summary
-    summary = {
-        'course_design': conversation.to_dict(),
-        'framework_coverage': {
-            'areas_covered': conversation.get_framework_areas_covered(),
-            'completion_percentage': conversation.completion_percentage
-        },
-        'conversation_stats': {
-            'total_messages': len(messages),
-            'user_messages': len([m for m in messages if m.sender == 'user']),
-            'duration': (conversation.updated_at - conversation.created_at).total_seconds() / 60 if conversation.updated_at and conversation.created_at else 0
-        }
-    }
+    # Extract course information using conversation intelligence
+    history_data = [{'sender': msg.sender, 'content': msg.content} for msg in messages]
+    course_info = conv_intelligence.extract_course_info(history_data)
     
-    return jsonify(summary)
-
-@conversation_bp.route('/framework/concepts', methods=['GET'])
-def get_framework_concepts():
-    """Get all framework concepts for reference"""
-    concepts = FrameworkConcept.query.all()
-    return jsonify([concept.to_dict() for concept in concepts])
+    return jsonify({
+        'conversation': conversation.to_dict(),
+        'message_count': len(messages),
+        'course_design': course_info,
+        'framework_areas_covered': conversation.get_framework_areas_covered(),
+        'completion_status': {
+            'current_step': conversation.current_step,
+            'total_steps': conversation.total_steps,
+            'percentage': conversation.completion_percentage
+        }
+    })
 
 @conversation_bp.route('/conversations/<session_id>/export', methods=['GET'])
 def export_conversation(session_id):
-    """Export conversation data in multiple formats"""
-    format_type = request.args.get('format', 'json')
+    """Export conversation in various formats"""
+    format_type = request.args.get('format', 'json').lower()
     
     conversation = Conversation.query.filter_by(session_id=session_id).first()
     if not conversation:
@@ -282,27 +227,28 @@ def export_conversation(session_id):
     
     messages = Message.query.filter_by(conversation_id=conversation.id).order_by(Message.timestamp).all()
     
-    export_data = {
-        'conversation': conversation.to_dict(),
-        'messages': [msg.to_dict() for msg in messages],
-        'export_timestamp': datetime.utcnow().isoformat()
-    }
-    
     if format_type == 'json':
+        export_data = {
+            'conversation': conversation.to_dict(),
+            'messages': [msg.to_dict() for msg in messages],
+            'export_timestamp': datetime.utcnow().isoformat(),
+            'framework_areas_covered': conversation.get_framework_areas_covered()
+        }
         return jsonify(export_data)
-    elif format_type == 'summary':
-        # Return a structured summary for integration
-        return jsonify({
-            'course_title': conversation.course_title,
-            'target_audience': conversation.target_audience,
-            'educational_level': conversation.educational_level,
-            'learning_objectives': conversation.learning_objectives,
-            'assessment_approach': conversation.assessment_approach,
-            'delivery_method': conversation.delivery_method,
-            'bias_considerations': conversation.bias_considerations,
-            'framework_areas_covered': conversation.get_framework_areas_covered(),
-            'completion_status': 'complete' if conversation.completion_percentage >= 100 else 'in_progress'
-        })
+    
+    elif format_type == 'csv':
+        # Create CSV format
+        csv_data = "timestamp,sender,content,message_type\n"
+        for msg in messages:
+            # Escape quotes and newlines for CSV
+            content = msg.content.replace('"', '""').replace('\n', ' ')
+            csv_data += f'"{msg.timestamp}","{msg.sender}","{content}","{msg.message_type}"\n'
+        
+        return csv_data, 200, {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': f'attachment; filename="conversation_{session_id}.csv"'
+        }
+    
     else:
-        return jsonify({'error': 'Unsupported format'}), 400
+        return jsonify({'error': 'Unsupported format. Use json or csv.'}), 400
 
