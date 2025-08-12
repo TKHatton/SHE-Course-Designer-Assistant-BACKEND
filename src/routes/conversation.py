@@ -128,7 +128,7 @@ def send_message(session_id):
     conversation_history = Message.query.filter_by(conversation_id=conversation.id).order_by(Message.timestamp).all()
     history_data = [{'sender': msg.sender, 'content': msg.content} for msg in conversation_history]
     
-    # Generate response using available method
+    # Generate response using conversation intelligence
     response_data = conv_intelligence.generate_response(user_message, history_data)
     
     # Save user message
@@ -164,8 +164,8 @@ def send_message(session_id):
     conversation.updated_at = datetime.utcnow()
     
     # Update framework areas covered
-    current_areas = conversation.get_framework_areas_covered()
     framework_area = response_data.get('framework_area', 'General Framework Guidance')
+    current_areas = conversation.get_framework_areas_covered()
     if framework_area not in current_areas:
         new_areas = current_areas + [framework_area]
         conversation.set_framework_areas_covered(new_areas)
