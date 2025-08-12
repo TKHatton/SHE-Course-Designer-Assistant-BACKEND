@@ -1,3 +1,6 @@
+import uuid
+from flask import jsonify, request
+
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -59,6 +62,31 @@ def serve(path):
             return send_from_directory(static_folder_path, 'index.html')
         else:
             return "index.html not found", 404
+
+@app.route('/api/conversations', methods=['POST'])
+def create_conversation():
+    session_id = str(uuid.uuid4())
+    return jsonify({
+        'session_id': session_id,
+        'welcome_message': {
+            'content': "Hi! I'm the She Is AI Course Design Assistant. What kind of AI course are you excited to build?",
+            'sender': 'assistant'
+        }
+    })
+
+@app.route('/api/conversations/<session_id>/messages', methods=['POST'])
+def send_message(session_id):
+    data = request.get_json()
+    user_message = data.get('message', '')
+    
+    response = f"Thanks for sharing: '{user_message}'. I'm here to help you design an amazing AI course using the She Is AI's educational framework. Can you tell me more about your target audience?"
+    
+    return jsonify({
+        'ai_response': {
+            'content': response,
+            'sender': 'assistant'
+        }
+    })
 
 
 if __name__ == '__main__':
