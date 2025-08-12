@@ -1,26 +1,22 @@
 import os
 import sys
-# DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 from src.models.user import db
 from src.routes.user import user_bp
-from src.routes.conversation import conversation_bp
+from src.routes.conversation import conversation_bp  # ← THIS LINE
 from src.routes.export_simple import export_bp
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
+app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
 app.config['OPENAI_API_KEY'] = 'your-actual-api-key-here'
 
-# REPLACE 'your-actual-api-key-here' WITH YOUR REAL OPENAI API KEY
-app.config['OPENAI_API_KEY'] = 'your-actual-api-key-here'
-
-# Enable CORS for Netlify and all origins
-CORS(app, origins=["https://coursedesignerassistant.netlify.app", "*"], allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+CORS(app, origins=["https://coursedesignerassistant.netlify.app", "*"], allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"] )
 
 app.register_blueprint(user_bp, url_prefix='/api')
-app.register_blueprint(conversation_bp, url_prefix='/api')
+app.register_blueprint(conversation_bp, url_prefix='/api')  # ← THIS LINE
 app.register_blueprint(export_bp, url_prefix='/api')
 
 # uncomment if you need to use database
