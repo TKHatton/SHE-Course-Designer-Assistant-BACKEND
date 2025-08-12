@@ -17,12 +17,24 @@ class AdvancedConversationIntelligence:
         
     def generate_response(self, user_message, conversation_context=None):
         """Generate a framework-guided response"""
+
+    def sanitize_input(self, text):
+        return text.strip()
+    
+    def detect_safety_violations(self, text):
+        return []
+    
+    def analyze_user_message(self, message, history):
+        return {'intent': 'course_design', 'confidence': 0.8, 'framework_references': []}
+    
+    def generate_intelligent_response(self, message, conversation, analysis):
+        return "Thanks for your message! I'm here to help you design your AI course using the She Is AI framework."    
         
         # Simple demo responses based on keywords
         user_lower = user_message.lower()
         
         if any(word in user_lower for word in ['beginner', 'new', 'start']):
-            response = """Perfect! Creating an AI course for beginners is exactly what the She Is AI framework excels at. 
+            response = """Perfect! Creating an AI course for beginners is exactly what the She Is AI educational framework excels at. 
 
 Let's start by understanding your learners better. Our framework emphasizes inclusive design from the very beginning.
 

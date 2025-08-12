@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from src.models.conversation import db, Conversation, Message, FrameworkConcept
-from src.utils.conversation_intelligence_simple import AdvancedConversationIntelligence
+# from src.utils.conversation_intelligence_simple import AdvancedConversationIntelligence
 import uuid
 import json
 from datetime import datetime, timedelta
