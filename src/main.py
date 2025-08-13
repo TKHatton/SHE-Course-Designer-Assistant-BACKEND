@@ -8,7 +8,7 @@ import openai
 
 app = Flask(__name__)
 
-# CORS configuration - allow your frontend domains
+# CORS configuration
 CORS(app, origins=[
     "https://coursedesignerassistant.netlify.app",
     "http://localhost:3000",
@@ -19,14 +19,14 @@ CORS(app, origins=[
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
 
-# In-memory storage for conversations (use database in production)
+# In-memory storage for conversations
 conversations = {}
 
-# She Is AI Framework Areas - COMPLETE FRAMEWORK
+# She Is AI Framework Areas with completion criteria
 FRAMEWORK_AREAS = [
     {
         "name": "Learner Understanding",
-        "key_info": ["learner_type", "experience_level", "goals"],
+        "completion_criteria": ["learner_type", "experience_level", "goals"],
         "questions": [
             "Who are your learners? (students, professionals, career changers, etc.)",
             "What's their current level? (complete beginners, some tech background, etc.)",
@@ -35,152 +35,282 @@ FRAMEWORK_AREAS = [
     },
     {
         "name": "AI in Context",
-        "key_info": ["ai_applications", "field_relevance", "practical_examples"],
+        "completion_criteria": ["ai_tools", "practical_applications", "relevance"],
         "questions": [
-            "How will AI shape your learners' field/topic? (tools, workflows, industry examples)",
-            "What specific AI applications are most relevant to your subject area?",
-            "How can you make AI concepts tangible and relatable to your learners?"
+            "What specific AI tools or applications will you focus on?",
+            "How will AI impact your learners' field or work?",
+            "What practical examples will make AI concepts tangible?"
         ]
     },
     {
-        "name": "Ethics & Responsible AI Use",
-        "key_info": ["ethical_considerations", "safety_measures", "real_world_examples"],
+        "name": "Ethics & Responsible AI",
+        "completion_criteria": ["ethical_considerations", "safety_measures"],
         "questions": [
-            "What ethical considerations are most important for your learners to understand?",
-            "How will you help them design safe, fair, and trustworthy AI experiences?",
-            "What real-world examples of AI ethics can you incorporate?"
+            "What ethical considerations are most important for your learners?",
+            "How will you ensure responsible AI use in your course?"
         ]
     },
     {
         "name": "Bias Recognition & Equity",
-        "key_info": ["bias_detection", "equity_strategies", "inclusive_design"],
+        "completion_criteria": ["bias_awareness", "inclusive_design"],
         "questions": [
-            "How will you help learners spot bias in AI systems?",
-            "What strategies will you teach for designing equitable AI systems?",
-            "How will you address bias in your own course design and delivery?"
-        ]
-    },
-    {
-        "name": "AI Skills for the Future",
-        "key_info": ["career_skills", "job_opportunities", "hands_on_projects"],
-        "questions": [
-            "What specific AI-related skills will your learners develop for career readiness?",
-            "How will you connect these skills to real job opportunities?",
-            "What hands-on projects will demonstrate these skills?"
+            "How will you help learners recognize and prevent bias?",
+            "What strategies ensure your course is inclusive and equitable?"
         ]
     },
     {
         "name": "Assessment Strategy",
-        "key_info": ["assessment_methods", "portfolio_items", "evaluation_criteria"],
+        "completion_criteria": ["assessment_methods", "practical_evaluation"],
         "questions": [
-            "How will you assess learning through authentic, portfolio-based evaluation?",
-            "What real-world applications will learners create to demonstrate knowledge?",
-            "How will peer evaluation and collaborative assessment be integrated?"
+            "How will you assess learning through hands-on projects?",
+            "What will learners create to demonstrate their understanding?"
         ]
     }
 ]
 
-def extract_learner_info(messages):
-    """Extract key information about learners from conversation history"""
-    learner_info = {
-        "type": None,
-        "level": None,
+def extract_course_info(messages):
+    """Extract comprehensive course information from conversation"""
+    course_info = {
+        "learner_type": None,
+        "experience_level": None,
         "goals": None,
-        "subject_area": None
+        "subject_area": None,
+        "ai_tools": [],
+        "practical_applications": [],
+        "assessment_methods": [],
+        "ethical_considerations": [],
+        "bias_awareness": False,
+        "inclusive_design": False
     }
     
-    # Look through messages for learner information
     for msg in messages:
         if msg.get('sender') == 'user':
             content = msg.get('content', '').lower()
             
-            # Extract learner type
+            # Extract learner information
             if 'professional' in content:
-                learner_info["type"] = "professionals"
-            elif 'student' in content:
-                learner_info["type"] = "students"
+                course_info["learner_type"] = "professionals"
+            elif 'student' in content or 'high school' in content:
+                course_info["learner_type"] = "students"
             elif 'career chang' in content:
-                learner_info["type"] = "career changers"
+                course_info["learner_type"] = "career changers"
             
-            # Extract level
+            # Extract experience level
             if 'beginner' in content:
-                learner_info["level"] = "beginners"
+                course_info["experience_level"] = "beginners"
             elif 'intermediate' in content:
-                learner_info["level"] = "intermediate"
+                course_info["experience_level"] = "intermediate"
             elif 'advanced' in content:
-                learner_info["level"] = "advanced"
-            elif 'can make great' in content or 'experienced' in content:
-                learner_info["level"] = "experienced"
+                course_info["experience_level"] = "advanced"
             
-            # Extract subject area/goals
+            # Extract AI tools
+            if 'gamma' in content:
+                course_info["ai_tools"].append("Gamma")
+            if 'canva' in content:
+                course_info["ai_tools"].append("Canva")
             if 'powerpoint' in content or 'presentation' in content:
-                learner_info["subject_area"] = "PowerPoint/presentations"
-                learner_info["goals"] = "create presentations faster and more efficiently"
-            elif 'quickly' in content and 'efficiently' in content:
-                learner_info["goals"] = "work more efficiently"
+                course_info["subject_area"] = "presentations"
+            
+            # Extract goals and applications
+            if 'faster' in content or 'efficiently' in content or 'save time' in content:
+                course_info["goals"] = "efficiency and time-saving"
+            if 'visual' in content or 'image' in content:
+                course_info["practical_applications"].append("visual content creation")
+            
+            # Extract assessment methods
+            if 'hands-on' in content or 'doing' in content or 'presenting' in content:
+                course_info["assessment_methods"].append("hands-on projects")
+            if 'feedback' in content or 'survey' in content:
+                course_info["assessment_methods"].append("feedback and surveys")
     
-    return learner_info
+    return course_info
 
-def get_current_framework_area(conversation):
-    """Get the current framework area based on what's been covered"""
-    learner_info = extract_learner_info(conversation.get('messages', []))
-    areas_covered = conversation.get('framework_areas_covered', [])
+def detect_bias_or_exclusion(message):
+    """Detect potential bias or exclusionary language"""
+    message_lower = message.lower()
     
-    # If we have basic learner info, move to next areas
-    if learner_info["type"] and learner_info["level"]:
-        # Mark learner understanding as covered if we have the info
-        if "Learner Understanding" not in areas_covered:
-            conversation['framework_areas_covered'].append("Learner Understanding")
-            areas_covered = conversation['framework_areas_covered']
+    # Exclusionary language patterns
+    exclusionary_patterns = [
+        "only teach", "don't teach", "can't come to", "not for", "exclude",
+        "not suitable for", "only for", "not allowed", "restricted to"
+    ]
     
-    # Find the next area that hasn't been covered
-    for area in FRAMEWORK_AREAS:
-        if area['name'] not in areas_covered:
-            return area
+    # Bias indicators
+    bias_patterns = [
+        "too difficult for", "not smart enough", "can't handle", "not capable",
+        "not ready for", "too advanced for", "not suited for"
+    ]
     
-    # If all areas covered, return the last area
-    return FRAMEWORK_AREAS[-1]
+    exclusionary_detected = any(pattern in message_lower for pattern in exclusionary_patterns)
+    bias_detected = any(pattern in message_lower for pattern in bias_patterns)
+    
+    return {
+        "has_exclusionary_language": exclusionary_detected,
+        "has_bias_indicators": bias_detected,
+        "severity": "high" if exclusionary_detected else "medium" if bias_detected else "none"
+    }
+
+def get_bias_correction_response(bias_info, message):
+    """Generate appropriate bias correction response"""
+    if bias_info["has_exclusionary_language"]:
+        return "I notice some language that might exclude certain learners. The She Is AI framework emphasizes inclusive, bias-free education that welcomes all learners regardless of background. How can we redesign your approach to be more inclusive and accessible to diverse learners?"
+    
+    elif bias_info["has_bias_indicators"]:
+        return "That approach might unintentionally create barriers for some learners. Our framework focuses on inclusive design that assumes all learners can succeed with proper support. How might you adjust your course to be more welcoming and supportive for diverse learning styles and backgrounds?"
+    
+    return None
+
+def check_area_completion(area, course_info):
+    """Check if a framework area has sufficient information"""
+    if area["name"] == "Learner Understanding":
+        return (course_info["learner_type"] and 
+                course_info["experience_level"] and 
+                (course_info["goals"] or course_info["subject_area"]))
+    
+    elif area["name"] == "AI in Context":
+        return (len(course_info["ai_tools"]) > 0 and 
+                len(course_info["practical_applications"]) > 0 and
+                course_info["subject_area"])
+    
+    elif area["name"] == "Assessment Strategy":
+        return len(course_info["assessment_methods"]) > 0
+    
+    # For other areas, check if user has provided substantial responses
+    return False
+
+def get_completion_celebration(area_name, course_info):
+    """Generate positive reinforcement for completed areas"""
+    celebrations = {
+        "Learner Understanding": f"Excellent! You've clearly identified your target learners: {course_info['learner_type']} at {course_info['experience_level']} level. This foundation is perfect for the She Is AI framework.",
+        
+        "AI in Context": f"Outstanding! Your focus on {', '.join(course_info['ai_tools'])} for {course_info['subject_area']} with {', '.join(course_info['practical_applications'])} is exactly the kind of practical, relevant approach our framework promotes.",
+        
+        "Assessment Strategy": f"Perfect! Your hands-on assessment approach with {', '.join(course_info['assessment_methods'])} aligns beautifully with our portfolio-based evaluation principles."
+    }
+    
+    return celebrations.get(area_name, f"Great work on the {area_name} area! Your approach aligns well with our framework.")
+
+def should_end_conversation(course_info, areas_covered):
+    """Determine if conversation should end with summary"""
+    # End if we have core information across multiple areas
+    has_learners = course_info["learner_type"] and course_info["experience_level"]
+    has_ai_context = len(course_info["ai_tools"]) > 0 and course_info["subject_area"]
+    has_assessment = len(course_info["assessment_methods"]) > 0
+    
+    return has_learners and has_ai_context and has_assessment
+
+def generate_course_summary(course_info):
+    """Generate comprehensive course summary and validation"""
+    summary = f"""🎉 **Congratulations! You've designed an excellent AI course!**
+
+## **Your Course Design Summary:**
+
+**Target Learners:** {course_info['learner_type'].title()} at {course_info['experience_level']} level
+**Subject Focus:** {course_info['subject_area'].title()} using AI tools
+**AI Tools:** {', '.join(course_info['ai_tools'])}
+**Key Applications:** {', '.join(course_info['practical_applications'])}
+**Assessment Methods:** {', '.join(course_info['assessment_methods'])}
+
+## **Framework Alignment:**
+✅ **Learner-Centered Design** - You've clearly identified your audience and their needs
+✅ **Practical AI Applications** - Your tool selection is relevant and hands-on
+✅ **Inclusive Approach** - Your design welcomes diverse learners
+✅ **Authentic Assessment** - Your evaluation methods are practical and meaningful
+
+## **Why This Course Will Succeed:**
+Your course design perfectly embodies the She Is AI principles of inclusive, practical, and engaging AI education. You've created a learning experience that will genuinely prepare your learners for AI-enhanced work.
+
+## **Next Steps:**
+🔄 **Export Your Course Design** - Use the Export button to save your course plan in multiple formats
+📊 **Download Summary** - Get a detailed course outline you can use for implementation
+📋 **Share Your Vision** - Your course design is ready to share with stakeholders
+
+**Your course is ready to launch! Well done!**"""
+
+    return summary
 
 def get_ai_response(message, conversation):
-    """Generate AI response with proper conversation memory"""
+    """Generate intelligent AI response with bias detection and natural flow"""
     
     messages = conversation.get('messages', [])
-    learner_info = extract_learner_info(messages)
-    current_area = get_current_framework_area(conversation)
+    course_info = extract_course_info(messages)
+    areas_covered = conversation.get('framework_areas_covered', [])
     
-    # Build conversation history for AI
+    # Check for bias or exclusionary language
+    bias_info = detect_bias_or_exclusion(message)
+    if bias_info["severity"] != "none":
+        bias_response = get_bias_correction_response(bias_info, message)
+        if bias_response:
+            return bias_response
+    
+    # Check if conversation should end with summary
+    if should_end_conversation(course_info, areas_covered):
+        return generate_course_summary(course_info)
+    
+    # Find current area to work on
+    current_area = None
+    for area in FRAMEWORK_AREAS:
+        if area["name"] not in areas_covered:
+            # Check if this area is complete
+            if check_area_completion(area, course_info):
+                # Celebrate completion and mark as covered
+                celebration = get_completion_celebration(area["name"], course_info)
+                conversation['framework_areas_covered'].append(area["name"])
+                
+                # Find next area
+                next_area = None
+                for next_a in FRAMEWORK_AREAS:
+                    if next_a["name"] not in conversation['framework_areas_covered']:
+                        next_area = next_a
+                        break
+                
+                if next_area:
+                    return f"{celebration}\n\nNow let's move to {next_area['name']}. {next_area['questions'][0]}"
+                else:
+                    return generate_course_summary(course_info)
+            else:
+                current_area = area
+                break
+    
+    if not current_area:
+        return generate_course_summary(course_info)
+    
+    # Build conversation context
     conversation_history = []
-    for msg in messages[-6:]:  # Last 6 messages for context
+    for msg in messages[-4:]:
         if msg.get('sender') == 'user':
             conversation_history.append(f"User: {msg.get('content')}")
         elif msg.get('sender') == 'assistant':
             conversation_history.append(f"Assistant: {msg.get('content')}")
     
     # Create context-aware system prompt
-    system_prompt = f"""You are the She Is AI Course Design Assistant. You help educators create AI courses using our framework.
+    system_prompt = f"""You are a professional She Is AI Course Design Consultant. You help educators create inclusive, bias-free AI courses.
 
-LEARNER INFORMATION DISCOVERED:
-- Type: {learner_info.get('type', 'Not specified')}
-- Level: {learner_info.get('level', 'Not specified')}
-- Subject Area: {learner_info.get('subject_area', 'Not specified')}
-- Goals: {learner_info.get('goals', 'Not specified')}
+COURSE INFORMATION GATHERED:
+- Learners: {course_info.get('learner_type', 'Not specified')} ({course_info.get('experience_level', 'level not specified')})
+- Subject: {course_info.get('subject_area', 'Not specified')}
+- AI Tools: {', '.join(course_info.get('ai_tools', []))}
+- Applications: {', '.join(course_info.get('practical_applications', []))}
 
 CURRENT FRAMEWORK AREA: {current_area['name']}
+AREAS COMPLETED: {', '.join(areas_covered)}
 
 CONVERSATION HISTORY:
 {chr(10).join(conversation_history)}
 
 INSTRUCTIONS:
-1. NEVER repeat questions about information you already know
-2. If learner info is complete, move to the next framework area
+1. Be encouraging and positive about their progress
+2. Ask ONE focused question to advance the current area
 3. Keep responses concise (2-3 sentences max)
-4. Ask ONE specific question to advance the conversation
-5. Build on what the user has already shared
+4. Build on information already provided
+5. Never repeat questions about information you already know
+6. If they've provided good information for the current area, celebrate it and move forward
+7. Focus on practical, actionable course design advice
 
-CURRENT AREA FOCUS: {current_area['name']}
-Key questions for this area: {current_area['questions']}
+Current area focus: {current_area['name']}
+Next question to explore: {current_area['questions'][0]}
 
-Based on the conversation history and current area, provide a helpful response that moves the conversation forward WITHOUT repeating information you already know."""
+Provide a helpful response that moves the conversation forward naturally."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -198,16 +328,16 @@ Based on the conversation history and current area, provide a helpful response t
     except Exception as e:
         print(f"OpenAI API error: {e}")
         
-        # Fallback response based on current area and learner info
-        if current_area['name'] == "Learner Understanding" and learner_info.get('type'):
-            return f"Perfect! So you're teaching {learner_info['type']} who are {learner_info.get('level', 'experienced')} with {learner_info.get('subject_area', 'presentations')}. Now let's explore how AI will specifically impact their work. What AI tools or workflows do you think would be most relevant for creating presentations efficiently?"
-        elif current_area['name'] == "AI in Context":
-            return "Great! Now let's think about the specific AI applications. For PowerPoint creation, what AI tools do you think would be most valuable - content generation, design assistance, or automation workflows?"
+        # Fallback responses based on current area
+        if current_area['name'] == "Ethics & Responsible AI":
+            return f"Great progress so far! For the {current_area['name']} area: {current_area['questions'][0]}"
+        elif current_area['name'] == "Bias Recognition & Equity":
+            return f"Excellent work! Now for {current_area['name']}: {current_area['questions'][0]}"
         else:
-            return f"Let's continue with {current_area['name']}. {current_area['questions'][0]}"
+            return f"You're doing great! Let's explore {current_area['name']}: {current_area['questions'][0]}"
 
 def check_safety_violations(message):
-    """Check for inappropriate content or off-topic requests"""
+    """Check for inappropriate content"""
     inappropriate_keywords = [
         'personal advice', 'relationship', 'medical', 'legal advice', 
         'politics', 'religion', 'inappropriate', 'harmful'
@@ -227,7 +357,7 @@ def get_safety_response():
     }
 
 def calculate_progress(conversation):
-    """Calculate progress through the framework areas"""
+    """Calculate progress through framework areas"""
     areas_covered = len(conversation.get('framework_areas_covered', []))
     total_areas = len(FRAMEWORK_AREAS)
     
@@ -260,13 +390,12 @@ def create_recovery_conversation(session_id, user_message):
     conversation['messages'].append(user_msg)
     
     # Create contextual recovery message
-    recovery_content = "I see we got disconnected! No worries - let's continue building your AI course. "
+    recovery_content = "Welcome back! I'm here to help you create an amazing AI course using the She Is AI framework. "
     
-    # Try to extract context from the user message
     if 'professional' in user_message.lower():
-        recovery_content += "I can see you're working on a course for professionals. Let's continue from where we left off. What specific AI skills or tools do you want them to learn?"
+        recovery_content += "I can see you're working on a course for professionals. Let's build something incredible together! What specific AI skills or tools do you want them to learn?"
     else:
-        recovery_content += "Based on what you just shared, let me help you move forward with the She Is AI framework. Can you tell me more about your target learners?"
+        recovery_content += "Let's start by understanding your learners. Who are you designing this course for?"
     
     recovery_message = {
         "id": str(uuid.uuid4()),
@@ -321,7 +450,7 @@ def create_conversation():
 
 @app.route('/api/conversations/<session_id>/messages', methods=['POST'])
 def send_message(session_id):
-    """Send a message with proper memory and context tracking"""
+    """Send a message with professional consultation experience"""
     data = request.get_json()
     message = data.get('message', '').strip()
     
@@ -363,7 +492,7 @@ def send_message(session_id):
             "conversation_update": calculate_progress(conversation)
         })
     
-    # Generate AI response with full conversation context
+    # Generate AI response with professional consultation approach
     ai_content = get_ai_response(message, conversation)
     
     ai_response = {
@@ -386,7 +515,7 @@ def send_message(session_id):
 
 @app.route('/api/conversations/<session_id>/export', methods=['GET'])
 def export_conversation(session_id):
-    """Export conversation data"""
+    """Export conversation data with course summary"""
     if session_id not in conversations:
         return jsonify({
             "error": "Conversation not found",
@@ -395,13 +524,14 @@ def export_conversation(session_id):
         }), 404
     
     conversation = conversations[session_id]
+    course_info = extract_learner_info(conversation.get('messages', []))
     format_type = request.args.get('format', 'json')
     
     if format_type == 'json':
         return jsonify({
             "session_id": session_id,
             "conversation": conversation,
-            "learner_info": extract_learner_info(conversation.get('messages', [])),
+            "course_summary": course_info,
             "framework_progress": calculate_progress(conversation),
             "export_timestamp": datetime.now().isoformat()
         })
