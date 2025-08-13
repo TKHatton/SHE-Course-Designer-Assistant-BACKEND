@@ -231,11 +231,48 @@ def should_advance_to_next_area(message, current_area):
     
     return any(phrase in message_lower for phrase in move_on_phrases)
 
+def create_recovery_conversation(session_id, user_message):
+    """Create a new conversation when session is lost, with context recovery"""
+    
+    conversation = {
+        'session_id': session_id,
+        'created_at': datetime.now().isoformat(),
+        'messages': [],
+        'framework_areas_covered': [],
+        'current_area_index': 0,
+        'recovered_session': True
+    }
+    
+    conversations[session_id] = conversation
+    
+    # Add user message that triggered recovery
+    user_msg = {
+        "id": str(uuid.uuid4()),
+        "sender": "user",
+        "content": user_message,
+        "timestamp": datetime.now().isoformat()
+    }
+    conversation['messages'].append(user_msg)
+    
+    # Create recovery message
+    recovery_message = {
+        "id": str(uuid.uuid4()),
+        "sender": "assistant",
+        "content": "I see we got disconnected! No worries - let's continue building your AI course. Based on what you just shared, let me help you move forward with the She Is AI framework.\n\nLet's start fresh: Who are your learners? (students, professionals, career changers, etc.)",
+        "timestamp": datetime.now().isoformat(),
+        "message_type": "session_recovery"
+    }
+    
+    conversation['messages'].append(recovery_message)
+    
+    return conversation, recovery_message
+
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({
         "message": "She Is AI Assistant API is running",
-        "status": "healthy"
+        "status": "healthy",
+        "active_conversations": len(conversations)
     })
 
 @app.route('/api/conversations', methods=['POST'])
@@ -277,16 +314,27 @@ def create_conversation():
 
 @app.route('/api/conversations/<session_id>/messages', methods=['POST'])
 def send_message(session_id):
-    """Send a message in an existing conversation"""
-    
-    if session_id not in conversations:
-        return jsonify({"error": "Conversation not found"}), 404
+    """Send a message in an existing conversation - WITH BULLETPROOF SESSION RECOVERY"""
     
     data = request.get_json()
     message = data.get('message', '').strip()
     
     if not message:
         return jsonify({"error": "Message cannot be empty"}), 400
+    
+    # BULLETPROOF SESSION HANDLING
+    if session_id not in conversations:
+        print(f"Session {session_id} not found - creating recovery conversation")
+        
+        # Auto-recover by creating new conversation with context
+        conversation, recovery_message = create_recovery_conversation(session_id, message)
+        
+        return jsonify({
+            "ai_response": recovery_message,
+            "safety_violation": False,
+            "session_recovered": True,
+            "conversation_update": calculate_progress(conversation)
+        })
     
     conversation = conversations[session_id]
     
@@ -308,6 +356,7 @@ def send_message(session_id):
         return jsonify({
             "ai_response": safety_response,
             "safety_violation": True,
+            "session_recovered": False,
             "conversation_update": calculate_progress(conversation)
         })
     
@@ -344,15 +393,20 @@ def send_message(session_id):
     return jsonify({
         "ai_response": ai_response,
         "safety_violation": False,
+        "session_recovered": False,
         "conversation_update": updated_progress
     })
 
 @app.route('/api/conversations/<session_id>/export', methods=['GET'])
 def export_conversation(session_id):
-    """Export conversation data"""
+    """Export conversation data - WITH SESSION RECOVERY"""
     
     if session_id not in conversations:
-        return jsonify({"error": "Conversation not found"}), 404
+        return jsonify({
+            "error": "Conversation not found",
+            "session_id": session_id,
+            "recovery_available": True
+        }), 404
     
     conversation = conversations[session_id]
     format_type = request.args.get('format', 'json')
@@ -375,6 +429,26 @@ def export_conversation(session_id):
     
     else:
         return jsonify({"error": "Unsupported format"}), 400
+
+# BULLETPROOF ERROR HANDLING
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        "error": "Endpoint not found",
+        "available_endpoints": [
+            "/health",
+            "/api/conversations",
+            "/api/conversations/<session_id>/messages",
+            "/api/conversations/<session_id>/export"
+        ]
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({
+        "error": "Internal server error",
+        "message": "The server encountered an unexpected condition. Please try again."
+    }), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
