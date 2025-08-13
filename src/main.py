@@ -26,6 +26,7 @@ conversations = {}
 FRAMEWORK_AREAS = [
     {
         "name": "Learner Understanding",
+        "key_info": ["learner_type", "experience_level", "goals"],
         "questions": [
             "Who are your learners? (students, professionals, career changers, etc.)",
             "What's their current level? (complete beginners, some tech background, etc.)",
@@ -34,6 +35,7 @@ FRAMEWORK_AREAS = [
     },
     {
         "name": "AI in Context",
+        "key_info": ["ai_applications", "field_relevance", "practical_examples"],
         "questions": [
             "How will AI shape your learners' field/topic? (tools, workflows, industry examples)",
             "What specific AI applications are most relevant to your subject area?",
@@ -42,6 +44,7 @@ FRAMEWORK_AREAS = [
     },
     {
         "name": "Ethics & Responsible AI Use",
+        "key_info": ["ethical_considerations", "safety_measures", "real_world_examples"],
         "questions": [
             "What ethical considerations are most important for your learners to understand?",
             "How will you help them design safe, fair, and trustworthy AI experiences?",
@@ -50,6 +53,7 @@ FRAMEWORK_AREAS = [
     },
     {
         "name": "Bias Recognition & Equity",
+        "key_info": ["bias_detection", "equity_strategies", "inclusive_design"],
         "questions": [
             "How will you help learners spot bias in AI systems?",
             "What strategies will you teach for designing equitable AI systems?",
@@ -58,6 +62,7 @@ FRAMEWORK_AREAS = [
     },
     {
         "name": "AI Skills for the Future",
+        "key_info": ["career_skills", "job_opportunities", "hands_on_projects"],
         "questions": [
             "What specific AI-related skills will your learners develop for career readiness?",
             "How will you connect these skills to real job opportunities?",
@@ -65,79 +70,117 @@ FRAMEWORK_AREAS = [
         ]
     },
     {
-        "name": "Women's Role in Shaping AI",
-        "questions": [
-            "How will you highlight contributions and leadership of women in AI?",
-            "What role models and success stories will you share?",
-            "How will you encourage all learners to see themselves as AI leaders?"
-        ]
-    },
-    {
         "name": "Assessment Strategy",
+        "key_info": ["assessment_methods", "portfolio_items", "evaluation_criteria"],
         "questions": [
             "How will you assess learning through authentic, portfolio-based evaluation?",
             "What real-world applications will learners create to demonstrate knowledge?",
             "How will peer evaluation and collaborative assessment be integrated?"
         ]
-    },
-    {
-        "name": "Universal Lesson Structure",
-        "questions": [
-            "How will you implement the 7-component lesson structure in your context?",
-            "What opening rituals and community-building activities will you use?",
-            "How will you balance content delivery with hands-on practice?"
-        ]
-    },
-    {
-        "name": "Content Progression",
-        "questions": [
-            "How will you sequence content to build from foundational to advanced concepts?",
-            "What scaffolding will you provide for different learning levels?",
-            "How will you ensure all five core AI concepts are covered appropriately?"
-        ]
-    },
-    {
-        "name": "Course Implementation",
-        "questions": [
-            "What resources and support will you need to implement this course?",
-            "How will you measure success and gather feedback for improvement?",
-            "What's your plan for launching and sustaining this course?"
-        ]
     }
 ]
 
-def get_ai_response(message, conversation_context, current_area, progress):
-    """Generate AI response using OpenAI with She Is AI framework guidance"""
+def extract_learner_info(messages):
+    """Extract key information about learners from conversation history"""
+    learner_info = {
+        "type": None,
+        "level": None,
+        "goals": None,
+        "subject_area": None
+    }
     
-    # Build context for the AI
-    system_prompt = f"""You are the She Is AI Course Design Assistant, helping educators create inclusive, bias-free AI education courses.
+    # Look through messages for learner information
+    for msg in messages:
+        if msg.get('sender') == 'user':
+            content = msg.get('content', '').lower()
+            
+            # Extract learner type
+            if 'professional' in content:
+                learner_info["type"] = "professionals"
+            elif 'student' in content:
+                learner_info["type"] = "students"
+            elif 'career chang' in content:
+                learner_info["type"] = "career changers"
+            
+            # Extract level
+            if 'beginner' in content:
+                learner_info["level"] = "beginners"
+            elif 'intermediate' in content:
+                learner_info["level"] = "intermediate"
+            elif 'advanced' in content:
+                learner_info["level"] = "advanced"
+            elif 'can make great' in content or 'experienced' in content:
+                learner_info["level"] = "experienced"
+            
+            # Extract subject area/goals
+            if 'powerpoint' in content or 'presentation' in content:
+                learner_info["subject_area"] = "PowerPoint/presentations"
+                learner_info["goals"] = "create presentations faster and more efficiently"
+            elif 'quickly' in content and 'efficiently' in content:
+                learner_info["goals"] = "work more efficiently"
+    
+    return learner_info
+
+def get_current_framework_area(conversation):
+    """Get the current framework area based on what's been covered"""
+    learner_info = extract_learner_info(conversation.get('messages', []))
+    areas_covered = conversation.get('framework_areas_covered', [])
+    
+    # If we have basic learner info, move to next areas
+    if learner_info["type"] and learner_info["level"]:
+        # Mark learner understanding as covered if we have the info
+        if "Learner Understanding" not in areas_covered:
+            conversation['framework_areas_covered'].append("Learner Understanding")
+            areas_covered = conversation['framework_areas_covered']
+    
+    # Find the next area that hasn't been covered
+    for area in FRAMEWORK_AREAS:
+        if area['name'] not in areas_covered:
+            return area
+    
+    # If all areas covered, return the last area
+    return FRAMEWORK_AREAS[-1]
+
+def get_ai_response(message, conversation):
+    """Generate AI response with proper conversation memory"""
+    
+    messages = conversation.get('messages', [])
+    learner_info = extract_learner_info(messages)
+    current_area = get_current_framework_area(conversation)
+    
+    # Build conversation history for AI
+    conversation_history = []
+    for msg in messages[-6:]:  # Last 6 messages for context
+        if msg.get('sender') == 'user':
+            conversation_history.append(f"User: {msg.get('content')}")
+        elif msg.get('sender') == 'assistant':
+            conversation_history.append(f"Assistant: {msg.get('content')}")
+    
+    # Create context-aware system prompt
+    system_prompt = f"""You are the She Is AI Course Design Assistant. You help educators create AI courses using our framework.
+
+LEARNER INFORMATION DISCOVERED:
+- Type: {learner_info.get('type', 'Not specified')}
+- Level: {learner_info.get('level', 'Not specified')}
+- Subject Area: {learner_info.get('subject_area', 'Not specified')}
+- Goals: {learner_info.get('goals', 'Not specified')}
 
 CURRENT FRAMEWORK AREA: {current_area['name']}
-PROGRESS: {progress['current_step']}/{progress['total_steps']} areas completed
-
-Your role is to:
-1. Guide users through the She Is AI framework systematically
-2. Ask ONE focused question at a time from the current framework area
-3. Provide brief, actionable guidance (2-3 sentences max)
-4. Keep responses concise and conversational
-5. Move to the next area only when current area is sufficiently explored
-
-FRAMEWORK AREAS TO COVER:
-{json.dumps([area['name'] for area in FRAMEWORK_AREAS], indent=2)}
-
-CURRENT QUESTIONS FOR {current_area['name']}:
-{json.dumps(current_area['questions'], indent=2)}
 
 CONVERSATION HISTORY:
-{json.dumps(conversation_context[-3:], indent=2) if conversation_context else "No previous messages"}
+{chr(10).join(conversation_history)}
 
-Guidelines:
-- Be concise and actionable (avoid long explanations)
-- Ask ONE specific question to move the conversation forward
-- Provide brief context or tips when helpful
-- Stay focused on course design using the She Is AI framework
-- Redirect off-topic conversations gently back to course design
-"""
+INSTRUCTIONS:
+1. NEVER repeat questions about information you already know
+2. If learner info is complete, move to the next framework area
+3. Keep responses concise (2-3 sentences max)
+4. Ask ONE specific question to advance the conversation
+5. Build on what the user has already shared
+
+CURRENT AREA FOCUS: {current_area['name']}
+Key questions for this area: {current_area['questions']}
+
+Based on the conversation history and current area, provide a helpful response that moves the conversation forward WITHOUT repeating information you already know."""
 
     try:
         response = openai.ChatCompletion.create(
@@ -146,7 +189,7 @@ Guidelines:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": message}
             ],
-            max_tokens=200,  # Keep responses concise
+            max_tokens=150,
             temperature=0.7
         )
         
@@ -154,35 +197,24 @@ Guidelines:
     
     except Exception as e:
         print(f"OpenAI API error: {e}")
-        return f"I'm having trouble connecting right now. Let's continue with {current_area['name']} - {current_area['questions'][0]}"
+        
+        # Fallback response based on current area and learner info
+        if current_area['name'] == "Learner Understanding" and learner_info.get('type'):
+            return f"Perfect! So you're teaching {learner_info['type']} who are {learner_info.get('level', 'experienced')} with {learner_info.get('subject_area', 'presentations')}. Now let's explore how AI will specifically impact their work. What AI tools or workflows do you think would be most relevant for creating presentations efficiently?"
+        elif current_area['name'] == "AI in Context":
+            return "Great! Now let's think about the specific AI applications. For PowerPoint creation, what AI tools do you think would be most valuable - content generation, design assistance, or automation workflows?"
+        else:
+            return f"Let's continue with {current_area['name']}. {current_area['questions'][0]}"
 
 def check_safety_violations(message):
     """Check for inappropriate content or off-topic requests"""
-    
-    # Simple keyword-based safety check
     inappropriate_keywords = [
         'personal advice', 'relationship', 'medical', 'legal advice', 
         'politics', 'religion', 'inappropriate', 'harmful'
     ]
     
     message_lower = message.lower()
-    
-    for keyword in inappropriate_keywords:
-        if keyword in message_lower:
-            return True
-    
-    # Check if completely off-topic from education/course design
-    education_keywords = [
-        'course', 'learn', 'teach', 'student', 'education', 'curriculum',
-        'lesson', 'training', 'skill', 'knowledge', 'ai', 'framework'
-    ]
-    
-    has_education_context = any(keyword in message_lower for keyword in education_keywords)
-    
-    if len(message.split()) > 10 and not has_education_context:
-        return True
-    
-    return False
+    return any(keyword in message_lower for keyword in inappropriate_keywords)
 
 def get_safety_response():
     """Return appropriate response for safety violations"""
@@ -206,46 +238,19 @@ def calculate_progress(conversation):
         'framework_areas_covered': conversation.get('framework_areas_covered', [])
     }
 
-def get_current_framework_area(conversation):
-    """Get the current framework area to focus on"""
-    areas_covered = conversation.get('framework_areas_covered', [])
-    
-    # Find the next area that hasn't been covered
-    for area in FRAMEWORK_AREAS:
-        if area['name'] not in areas_covered:
-            return area
-    
-    # If all areas covered, return the last area for final questions
-    return FRAMEWORK_AREAS[-1]
-
-def should_advance_to_next_area(message, current_area):
-    """Determine if we should move to the next framework area"""
-    
-    # Simple heuristic: if message is substantial (>20 words) and addresses the area
-    if len(message.split()) > 20:
-        return True
-    
-    # Check if user explicitly indicates they want to move on
-    move_on_phrases = ['next', 'move on', 'continue', 'done with', 'finished']
-    message_lower = message.lower()
-    
-    return any(phrase in message_lower for phrase in move_on_phrases)
-
 def create_recovery_conversation(session_id, user_message):
-    """Create a new conversation when session is lost, with context recovery"""
-    
+    """Create a new conversation when session is lost"""
     conversation = {
         'session_id': session_id,
         'created_at': datetime.now().isoformat(),
         'messages': [],
         'framework_areas_covered': [],
-        'current_area_index': 0,
         'recovered_session': True
     }
     
     conversations[session_id] = conversation
     
-    # Add user message that triggered recovery
+    # Add user message
     user_msg = {
         "id": str(uuid.uuid4()),
         "sender": "user",
@@ -254,11 +259,19 @@ def create_recovery_conversation(session_id, user_message):
     }
     conversation['messages'].append(user_msg)
     
-    # Create recovery message
+    # Create contextual recovery message
+    recovery_content = "I see we got disconnected! No worries - let's continue building your AI course. "
+    
+    # Try to extract context from the user message
+    if 'professional' in user_message.lower():
+        recovery_content += "I can see you're working on a course for professionals. Let's continue from where we left off. What specific AI skills or tools do you want them to learn?"
+    else:
+        recovery_content += "Based on what you just shared, let me help you move forward with the She Is AI framework. Can you tell me more about your target learners?"
+    
     recovery_message = {
         "id": str(uuid.uuid4()),
         "sender": "assistant",
-        "content": "I see we got disconnected! No worries - let's continue building your AI course. Based on what you just shared, let me help you move forward with the She Is AI framework.\n\nLet's start fresh: Who are your learners? (students, professionals, career changers, etc.)",
+        "content": recovery_content,
         "timestamp": datetime.now().isoformat(),
         "message_type": "session_recovery"
     }
@@ -278,21 +291,17 @@ def health_check():
 @app.route('/api/conversations', methods=['POST'])
 def create_conversation():
     """Initialize a new conversation"""
-    
     session_id = str(uuid.uuid4())
     
-    # Create new conversation
     conversation = {
         'session_id': session_id,
         'created_at': datetime.now().isoformat(),
         'messages': [],
-        'framework_areas_covered': [],
-        'current_area_index': 0
+        'framework_areas_covered': []
     }
     
     conversations[session_id] = conversation
     
-    # Create welcome message
     welcome_message = {
         "id": str(uuid.uuid4()),
         "sender": "assistant",
@@ -302,8 +311,6 @@ def create_conversation():
     }
     
     conversation['messages'].append(welcome_message)
-    
-    # Calculate initial progress
     progress = calculate_progress(conversation)
     
     return jsonify({
@@ -314,19 +321,16 @@ def create_conversation():
 
 @app.route('/api/conversations/<session_id>/messages', methods=['POST'])
 def send_message(session_id):
-    """Send a message in an existing conversation - WITH BULLETPROOF SESSION RECOVERY"""
-    
+    """Send a message with proper memory and context tracking"""
     data = request.get_json()
     message = data.get('message', '').strip()
     
     if not message:
         return jsonify({"error": "Message cannot be empty"}), 400
     
-    # BULLETPROOF SESSION HANDLING
+    # Handle missing sessions with recovery
     if session_id not in conversations:
         print(f"Session {session_id} not found - creating recovery conversation")
-        
-        # Auto-recover by creating new conversation with context
         conversation, recovery_message = create_recovery_conversation(session_id, message)
         
         return jsonify({
@@ -338,17 +342,16 @@ def send_message(session_id):
     
     conversation = conversations[session_id]
     
-    # Add user message to conversation
+    # Add user message
     user_message = {
         "id": str(uuid.uuid4()),
         "sender": "user",
         "content": message,
         "timestamp": datetime.now().isoformat()
     }
-    
     conversation['messages'].append(user_message)
     
-    # Check for safety violations
+    # Check safety
     if check_safety_violations(message):
         safety_response = get_safety_response()
         conversation['messages'].append(safety_response)
@@ -360,23 +363,9 @@ def send_message(session_id):
             "conversation_update": calculate_progress(conversation)
         })
     
-    # Get current framework area
-    current_area = get_current_framework_area(conversation)
+    # Generate AI response with full conversation context
+    ai_content = get_ai_response(message, conversation)
     
-    # Check if we should advance to next area
-    if should_advance_to_next_area(message, current_area):
-        # Mark current area as covered
-        if current_area['name'] not in conversation['framework_areas_covered']:
-            conversation['framework_areas_covered'].append(current_area['name'])
-        
-        # Get next area
-        current_area = get_current_framework_area(conversation)
-    
-    # Generate AI response
-    progress = calculate_progress(conversation)
-    ai_content = get_ai_response(message, conversation['messages'], current_area, progress)
-    
-    # Create AI response
     ai_response = {
         "id": str(uuid.uuid4()),
         "sender": "assistant",
@@ -386,8 +375,6 @@ def send_message(session_id):
     }
     
     conversation['messages'].append(ai_response)
-    
-    # Update progress
     updated_progress = calculate_progress(conversation)
     
     return jsonify({
@@ -399,8 +386,7 @@ def send_message(session_id):
 
 @app.route('/api/conversations/<session_id>/export', methods=['GET'])
 def export_conversation(session_id):
-    """Export conversation data - WITH SESSION RECOVERY"""
-    
+    """Export conversation data"""
     if session_id not in conversations:
         return jsonify({
             "error": "Conversation not found",
@@ -415,12 +401,12 @@ def export_conversation(session_id):
         return jsonify({
             "session_id": session_id,
             "conversation": conversation,
+            "learner_info": extract_learner_info(conversation.get('messages', [])),
             "framework_progress": calculate_progress(conversation),
             "export_timestamp": datetime.now().isoformat()
         })
     
     elif format_type == 'csv':
-        # Simple CSV export of messages
         csv_data = "Timestamp,Sender,Content\n"
         for msg in conversation['messages']:
             csv_data += f"{msg['timestamp']},{msg['sender']},\"{msg['content']}\"\n"
@@ -430,7 +416,6 @@ def export_conversation(session_id):
     else:
         return jsonify({"error": "Unsupported format"}), 400
 
-# BULLETPROOF ERROR HANDLING
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({
